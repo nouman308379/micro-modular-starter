@@ -23,7 +23,7 @@ export const setPasswordSchema = z
       ),
     confirmPassword: z.string(),
   })
-  .refine((data) => data.newPassword === data.confirmPassword, {
+  .refine((data: { newPassword: string; confirmPassword: string }) => data.newPassword === data.confirmPassword, {
     message: "New password and confirm password do not match",
     path: ["confirmPassword"],
   });
@@ -43,7 +43,7 @@ export const resetPasswordSchema = z
       ),
     confirmPassword: z.string(),
   })
-  .refine((data) => data.newPassword === data.confirmPassword, {
+  .refine((data: { newPassword: string; confirmPassword: string }) => data.newPassword === data.confirmPassword, {
     message: "New password and confirm password do not match",
     path: ["confirmPassword"],
   });

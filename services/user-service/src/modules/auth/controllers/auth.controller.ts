@@ -1,8 +1,14 @@
 import { Request, Response } from "express";
-import { successResponse, failureResponse } from "../../../core/utils/responses.utils.js";
+import {
+  successResponse,
+  failureResponse,
+} from "../../../core/utils/responses.utils.js";
 import db from "../../../core/database/index.js";
 import jwt from "jsonwebtoken";
-import { users } from "../../../core/database/schemas/schema.js";
+import {
+  users,
+  verificationCodes,
+} from "../../../core/database/schemas/schema.js";
 import bcrypt from "bcrypt";
 import { eq, and } from "drizzle-orm";
 import ejs from "ejs";
@@ -16,7 +22,6 @@ const client = twilio(
   process.env.TWILIO_AUTH_TOKEN
 );
 class AuthController {
-  
   async signUpUser(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -41,19 +46,26 @@ class AuthController {
           phoneNumber,
           title,
           organizationName,
+          role: "client",
           isVerified: false,
-          verificationCode,
+        })
+        .returning();
+
+      await db
+        .insert(verificationCodes)
+        .values({
+          userId: newUser.id,
+          code: verificationCode,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         })
         .returning();
 
       const subject = "Verify Your Email Address";
-      const templatePath =
-        "../templates/verify-email.ejs";
+      const templatePath = "../templates/verify-email.ejs";
       const template = await ejs.renderFile(templatePath, {
         data: { subject, verificationCode, firstName, lastName },
       });
 
-     
       await publishToQueue({ email, subject, template });
 
       return successResponse(res, 201, "User registered successfully", {
@@ -72,15 +84,37 @@ class AuthController {
       const [user] = await db
         .select()
         .from(users)
-        .where(and(eq(users.email, email), eq(users.isVerified, true)))
+        .where(eq(users.email, email))
         .limit(1);
+
+      if (!user || !user.status || !user.isVerified) {
+        return successResponse(res, 401, "Invalid email or password");
+      }
+
+      if (user.isLocked) {
+        const lockedDuration = user.lockedAt
+          ? Date.now() - new Date(user.lockedAt).getTime()
+          : 0;
+        if (lockedDuration < 5 * 60 * 1000) {
+          return successResponse(
+            res,
+            403,
+            "Account is locked. Please try again later."
+          );
+        } else {
+          await db
+            .update(users)
+            .set({ isLocked: false, lockedAt: null })
+            .where(eq(users.id, user.id));
+        }
+      }
 
       if (
         !user ||
         !user.password ||
         !(await bcrypt.compare(password, user.password))
       ) {
-        return failureResponse(res, 401, "Invalid email or password");
+        return successResponse(res, 401, "Invalid email or password");
       }
 
       const token = jwt.sign(
@@ -108,20 +142,17 @@ class AuthController {
       const [user] = await db
         .select()
         .from(users)
+        .innerJoin(verificationCodes, eq(users.id, verificationCodes.userId))
         .where(
           and(
             eq(users.email, email),
-            eq(users.verificationCode, verificationCode)
+            eq(verificationCodes.code, verificationCode)
           )
-        );
-      if (!user) return failureResponse(res, 400, "Invalid Code or email");
+        )
+        .limit(1);
 
-      await db
-        .update(users)
-        .set({ verificationCode: null, isVerified: true })
-        .where(eq(users.id, user.id));
       const token = jwt.sign(
-        { id: user.id },
+        { id: user.users.id },
         process.env.JWT_SECRET as string,
         { expiresIn: parseInt(process.env.JWT_EXPIRATION_TIME as string, 10) }
       );
@@ -151,8 +182,7 @@ class AuthController {
         { expiresIn: parseInt(process.env.JWT_EXPIRATION_TIME as string, 10) }
       );
       const resetUrl = `https://yourfrontendurl.com/reset-password?token=${token}`;
-      const templatePath =
-        "../templates/forgot-email.ejs";
+      const templatePath = "../templates/forgot-email.ejs";
       const template = await ejs.renderFile(templatePath, {
         data: {
           user: `${user.firstName} ${user.lastName}`,

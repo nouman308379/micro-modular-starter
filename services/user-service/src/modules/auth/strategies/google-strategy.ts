@@ -48,10 +48,11 @@ passport.use(
           const [newUser] = await db
             .insert(users)
             .values({
-              googleId: profile.id,
-              email: profile.emails?.[0].value,
-              firstName: profile.name?.givenName,
-              lastName: profile.name?.familyName,
+              googleId: profile.id || null,
+              email: profile.emails?.[0].value || "",
+              firstName: profile.name?.givenName || "",
+              lastName: profile.name?.familyName || "",
+              role: "client",
             })
             .returning();
 
