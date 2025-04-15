@@ -6,7 +6,7 @@ import {
 import db from "../../../core/database/index.js";
 import { users } from "../../../core/database/schemas/schema.js";
 
-// import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import ejs from "ejs";
 import { generateVerificationCode } from "../../../core/utils/auth.util.js";
 
@@ -17,8 +17,18 @@ class UserController {
     try {
       const { firstName, lastName, email, status, role } = req.body;
 
-      const verificationCode = generateVerificationCode(6);
+      const existingUser = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
 
+      if (existingUser) {
+        return failureResponse(res, 400, "User already exists");
+      }
+
+      const verificationCode = generateVerificationCode(6);
+      
       const [newUser] = await db
         .insert(users)
         .values({

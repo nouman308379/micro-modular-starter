@@ -1,5 +1,5 @@
 import amqp from "amqplib";
-import { sendEmail } from "../core/utils/email.util.js";
+import { sendEmail } from "../../core/utils/email.util.js";
 
 const RABBITMQ_URL = process.env.MESSAGE_BROKER_URL || "amqp://rabbitmq:5672";
 const QUEUE_NAME = "email_queue";
