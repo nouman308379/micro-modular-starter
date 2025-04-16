@@ -10,10 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Path to template
-const templatePath = path.join(
-  __dirname,
-  "../../../templates/verify-email.ejs"
-);
+const templates = path.join(__dirname, "../../../templates/");
 
 const RABBITMQ_URL = process.env.MESSAGE_BROKER_URL || "amqp://rabbitmq:5672";
 const QUEUE_NAME = "email_queue";
@@ -34,8 +31,10 @@ export async function consumeEmails() {
           if (msg) {
             const emailData = JSON.parse(msg.content.toString());
 
-            const { email, subject, templateData } = emailData;
-            const template = await ejs.renderFile(templatePath, {
+            const { email, subject, templatePath, templateData } = emailData;
+
+            console.log("Received message:", emailData);
+            const template = await ejs.renderFile(templates + templatePath, {
               data: {
                 subject,
                 verificationCode: templateData.verificationCode,

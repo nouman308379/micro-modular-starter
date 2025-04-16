@@ -11,7 +11,6 @@ import {
 } from "../../../core/database/schemas/schema.js";
 import bcrypt from "bcrypt";
 import { eq, and } from "drizzle-orm";
-import ejs from "ejs";
 
 import { generateVerificationCode } from "../../../core/utils/auth.util.js";
 import twilio from "twilio";
@@ -62,6 +61,7 @@ class AuthController {
       await publishToQueue({
         email,
         subject: "Verify Your Email Address",
+        templatePath: "verify-email.ejs",
         templateData: { verificationCode, firstName, lastName },
       });
 
@@ -232,21 +232,16 @@ class AuthController {
         { expiresIn: parseInt(process.env.JWT_EXPIRATION_TIME as string, 10) }
       );
 
-      const resetUrl = `https://localhsot:3000/reset-password?token=${token}`;
+      const resetUrl = `https://localhost:3000/reset-password?token=${token}`;
+
+      const templatePath = "forgot-email.ejs";
 
       await publishToQueue({
         email,
         subject: "Verify Your Email Address",
-        templateData: { user: `${user.firstName} ${user.lastName}`, resetUrl },
+        templatePath,
+        templateData: { resetUrl },
       });
-      const templatePath = "../templates/forgot-email.ejs";
-      const template = await ejs.renderFile(templatePath, {
-        data: {
-          email,
-        },
-      });
-      console.log("template", template);
-      // await sendEmail(email, "Reset Your Password", template);
 
       return successResponse(
         res,
