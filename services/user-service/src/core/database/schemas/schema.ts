@@ -33,9 +33,6 @@ export const users = pgTable("users", {
   failedLoginAttempts: integer("failed_login_attempts").default(0),
   lastFailedLoginAt: timestamp("last_failed_login_at"),
 
-  isLocked: boolean("is_locked").default(false),
-  lockedAt: timestamp("locked_at"),
-
   googleId: text("google_id"),
   linkedinId: text("linkedin_id"),
   microsoftId: text("microsoft_id"),

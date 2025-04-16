@@ -59,14 +59,11 @@ class AuthController {
           expiresAt: new Date(Date.now() + 60 * 60 * 1000),
         })
         .returning();
-
-      const subject = "Verify Your Email Address";
-      const templatePath = "../templates/verify-email.ejs";
-      const template = await ejs.renderFile(templatePath, {
-        data: { subject, verificationCode, firstName, lastName },
+      await publishToQueue({
+        email,
+        subject: "Verify Your Email Address",
+        templateData: { verificationCode, firstName, lastName },
       });
-
-      await publishToQueue({ email, subject, template });
 
       return successResponse(res, 201, "User registered successfully", {
         user: newUser,
@@ -87,36 +84,61 @@ class AuthController {
         .where(eq(users.email, email))
         .limit(1);
 
-      if (!user || !user.status || !user.isVerified) {
+      if (!user) {
         return successResponse(res, 401, "Invalid email or password");
       }
 
-      if (user.isLocked) {
-        const lockedDuration = user.lockedAt
-          ? Date.now() - new Date(user.lockedAt).getTime()
-          : 0;
-        if (lockedDuration < 5 * 60 * 1000) {
-          return successResponse(
-            res,
-            403,
-            "Account is locked. Please try again later."
-          );
-        } else {
-          await db
-            .update(users)
-            .set({ isLocked: false, lockedAt: null })
-            .where(eq(users.id, user.id));
-        }
+      if (user.isVerified == false) {
+        return successResponse(res, 401, "Verify your email first");
+      }
+
+      if (user.status == false) {
+        return successResponse(res, 401, "Account is Blocked By Admin");
       }
 
       if (
-        !user ||
-        !user.password ||
-        !(await bcrypt.compare(password, user.password))
+        user.failedLoginAttempts &&
+        user.failedLoginAttempts > 5 &&
+        user.lastFailedLoginAt &&
+        user.lastFailedLoginAt.getTime() < Date.now() + 15 * 60 * 1000
       ) {
+        return successResponse(
+          res,
+          403,
+          "Account is locked. Please try again later."
+        );
+      }
+
+      const isPasswordValid =
+        user.password && (await bcrypt.compare(password, user.password));
+
+      console.log("isPasswordValid", isPasswordValid);
+
+      if (!isPasswordValid) {
+        // Update failed login attempts
+        const updatedFailedAttempts = (user.failedLoginAttempts || 0) + 1;
+        const lastFailedLoginAt = new Date();
+
+        await db
+          .update(users)
+          .set({
+            failedLoginAttempts: updatedFailedAttempts,
+            lastFailedLoginAt: lastFailedLoginAt,
+          })
+          .where(eq(users.id, user.id));
+
         return successResponse(res, 401, "Invalid email or password");
       }
 
+      if (user.failedLoginAttempts && user.failedLoginAttempts > 0) {
+        await db
+          .update(users)
+          .set({
+            failedLoginAttempts: 0,
+            lastFailedLoginAt: null,
+          })
+          .where(eq(users.id, user.id));
+      }
       const token = jwt.sign(
         { id: user.id },
         process.env.JWT_SECRET as string,
@@ -139,17 +161,40 @@ class AuthController {
   async verifyEmail(req: Request, res: Response): Promise<void> {
     try {
       const { email, verificationCode } = req.body;
+
       const [user] = await db
         .select()
         .from(users)
-        .innerJoin(verificationCodes, eq(users.id, verificationCodes.userId))
-        .where(
+        .innerJoin(
+          verificationCodes,
           and(
-            eq(users.email, email),
+            eq(users.id, verificationCodes.userId),
             eq(verificationCodes.code, verificationCode)
           )
         )
+        .where(eq(users.email, email))
         .limit(1);
+
+      if (!user) {
+        return successResponse(res, 400, "Invalid verification code or email");
+      }
+
+      if (user.verification_codes.expiresAt < new Date()) {
+        return successResponse(res, 400, "Verification code has been expired");
+      }
+
+      await db
+        .update(verificationCodes)
+        .set({
+          used: true,
+          expiresAt: new Date(0),
+        })
+        .where(eq(verificationCodes.id, user.verification_codes.id));
+
+      await db
+        .update(users)
+        .set({ isVerified: true })
+        .where(eq(users.id, user.users.id));
 
       const token = jwt.sign(
         { id: user.users.id },
@@ -159,9 +204,14 @@ class AuthController {
 
       return successResponse(res, 200, "Email verified successfully", {
         token,
+        user: {
+          id: user.users.id,
+          email: user.users.email,
+          isVerified: true,
+        },
       });
     } catch (error: any) {
-      console.error(`Email verification failed: ${error.message}`);
+      console.error("Email verification error:", error);
       return failureResponse(res, 500, "Internal Server Error");
     }
   }
@@ -181,16 +231,22 @@ class AuthController {
         process.env.JWT_SECRET as string,
         { expiresIn: parseInt(process.env.JWT_EXPIRATION_TIME as string, 10) }
       );
-      const resetUrl = `https://yourfrontendurl.com/reset-password?token=${token}`;
+
+      const resetUrl = `https://localhsot:3000/reset-password?token=${token}`;
+
+      await publishToQueue({
+        email,
+        subject: "Verify Your Email Address",
+        templateData: { user: `${user.firstName} ${user.lastName}`, resetUrl },
+      });
       const templatePath = "../templates/forgot-email.ejs";
       const template = await ejs.renderFile(templatePath, {
         data: {
-          user: `${user.firstName} ${user.lastName}`,
-          resetUrl,
           email,
         },
       });
       console.log("template", template);
+      // await sendEmail(email, "Reset Your Password", template);
 
       return successResponse(
         res,

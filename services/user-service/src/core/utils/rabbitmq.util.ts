@@ -1,6 +1,6 @@
 import amqp from "amqplib";
 
-const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://rabbitmq:5672";
+const RABBITMQ_URL = process.env.RABBITMQ_URL || "amqp://localhost:5672"; 
 const QUEUE_NAME = "email_queue";
 
 export async function connectRabbitMQ() {
