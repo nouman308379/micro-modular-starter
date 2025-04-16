@@ -12,7 +12,7 @@ import {
 import bcrypt from "bcrypt";
 import { eq, and } from "drizzle-orm";
 import ejs from "ejs";
-import { sendEmail } from "../../../core/utils/email.util.js";
+
 import { generateVerificationCode } from "../../../core/utils/auth.util.js";
 import twilio from "twilio";
 import { publishToQueue } from "../../../core/utils/rabbitmq.util.js";
@@ -190,7 +190,7 @@ class AuthController {
           email,
         },
       });
-      await sendEmail(email, "Reset Your Password", template);
+      console.log("template", template);
 
       return successResponse(
         res,

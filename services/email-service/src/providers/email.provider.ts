@@ -1,4 +1,4 @@
-import { transporter } from "../../config/nodemailer.config";
+import { transporter } from "../config/nodemailer.config.js";
 
 export async function sendEmail(
   email: string,

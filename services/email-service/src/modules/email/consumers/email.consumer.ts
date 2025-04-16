@@ -4,7 +4,7 @@ import { sendEmail } from "../../../providers/email.provider.js";
 const RABBITMQ_URL = process.env.MESSAGE_BROKER_URL || "amqp://rabbitmq:5672";
 const QUEUE_NAME = "email_queue";
 
-async function consumeEmails() {
+export async function consumeEmails() {
   let connected = false;
   while (!connected) {
     try {
@@ -42,5 +42,3 @@ async function consumeEmails() {
     }
   }
 }
-
-consumeEmails();
