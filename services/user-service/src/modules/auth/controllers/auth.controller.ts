@@ -13,14 +13,16 @@ import bcrypt from "bcrypt";
 import { eq, and } from "drizzle-orm";
 
 import { generateVerificationCode } from "../../../core/utils/auth.util.js";
-import twilio from "twilio";
+import { TwilioService } from "../services/twilio.service.js";
 import { publishToQueue } from "../../../core/utils/rabbitmq.util.js";
 
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 class AuthController {
+  private twilioService: TwilioService;
+
+  constructor(twilioService: TwilioService) {
+    this.twilioService = twilioService;
+  }
+
   async signUpUser(req: Request, res: Response): Promise<void> {
     try {
       const {
@@ -285,16 +287,21 @@ class AuthController {
     try {
       const { phoneNumber } = req.body;
 
-      await client.messages.create({
-        to: phoneNumber,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        body: "This is the ship that made the Run in fourteen parsecs?",
-      });
-      return successResponse(res, 200, "SMS sent successfully");
-    } catch (error: any) {
-      return failureResponse(res, 500, "Error sending SMS");
+      if (!phoneNumber) {
+        return failureResponse(res, 400, "Phone number is required");
+      }
+
+      await this.twilioService.sendSms(
+        phoneNumber,
+        "Your password reset link is..."
+      );
+
+      return successResponse(res, 200, "Password reset SMS sent");
+    } catch (error) {
+      console.error("Password reset error:", error);
+      return failureResponse(res, 500, "Failed to send password reset");
     }
   }
 }
 
-export default new AuthController();
+export default new AuthController(new TwilioService());
