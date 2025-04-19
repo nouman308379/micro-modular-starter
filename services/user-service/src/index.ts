@@ -36,7 +36,6 @@ const corsOptions = {
   origin: "*",
 };
 
-// Middleware
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "defaultSecret",
